@@ -1,0 +1,70 @@
+'use strict';
+const $=id=>document.getElementById(id);
+const cities=[['London','United Kingdom',51.5074,-.1278],['Paris','France',48.8566,2.3522],['New York','United States',40.7128,-74.006],['Los Angeles','United States',34.0522,-118.2437],['Mexico City','Mexico',19.4326,-99.1332],['Vancouver','Canada',49.2827,-123.1207],['Toronto','Canada',43.6532,-79.3832],['Havana','Cuba',23.1136,-82.3666],['Bogotá','Colombia',4.711,-74.0721],['Lima','Peru',-12.0464,-77.0428],['Santiago','Chile',-33.4489,-70.6693],['Buenos Aires','Argentina',-34.6037,-58.3816],['Rio de Janeiro','Brazil',-22.9068,-43.1729],['Reykjavík','Iceland',64.1466,-21.9426],['Madrid','Spain',40.4168,-3.7038],['Rome','Italy',41.9028,12.4964],['Oslo','Norway',59.9139,10.7522],['Istanbul','Türkiye',41.0082,28.9784],['Cairo','Egypt',30.0444,31.2357],['Marrakesh','Morocco',31.6295,-7.9811],['Accra','Ghana',5.6037,-.187],['Lagos','Nigeria',6.5244,3.3792],['Nairobi','Kenya',-1.2921,36.8219],['Cape Town','South Africa',-33.9249,18.4241],['Dubai','United Arab Emirates',25.2048,55.2708],['Mumbai','India',19.076,72.8777],['New Delhi','India',28.6139,77.209],['Kathmandu','Nepal',27.7172,85.324],['Bangkok','Thailand',13.7563,100.5018],['Singapore','Singapore',1.3521,103.8198],['Jakarta','Indonesia',-6.2088,106.8456],['Manila','Philippines',14.5995,120.9842],['Hong Kong','China',22.3193,114.1694],['Beijing','China',39.9042,116.4074],['Seoul','South Korea',37.5665,126.978],['Tokyo','Japan',35.6762,139.6503],['Ulaanbaatar','Mongolia',47.8864,106.9057],['Perth','Australia',-31.9523,115.8613],['Melbourne','Australia',-37.8136,144.9631],['Sydney','Australia',-33.8688,151.2093],['Auckland','New Zealand',-36.8485,174.7633],['Suva','Fiji',-18.1248,178.4501],['Honolulu','United States',21.3099,-157.8581],['Anchorage','United States',61.2181,-149.9003]];
+const rad=Math.PI/180,fmt=n=>Math.round(n).toLocaleString('en-US');
+function haversine(a,b){const dl=(b[2]-a[2])*rad,dn=(b[3]-a[3])*rad;const h=Math.min(1,Math.max(0,Math.sin(dl/2)**2+Math.cos(a[2]*rad)*Math.cos(b[2]*rad)*Math.sin(dn/2)**2));return 6371*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));}
+function accuracy(guess,actual){return Math.max(0,Math.round((1-Math.abs(guess-actual)/actual)*100));}
+function greatCircle(a,b){const vector=c=>[Math.cos(c[2]*rad)*Math.cos(c[3]*rad),Math.cos(c[2]*rad)*Math.sin(c[3]*rad),Math.sin(c[2]*rad)];const u=vector(a),v=vector(b);const angle=Math.acos(Math.max(-1,Math.min(1,u.reduce((s,x,i)=>s+x*v[i],0))));let prev=a[3];return Array.from({length:101},(_,i)=>{const t=i/100,den=Math.sin(angle);const p=Math.abs(den)<1e-8?u.map((x,j)=>x*(1-t)+v[j]*t):u.map((x,j)=>x*Math.sin((1-t)*angle)/den+v[j]*Math.sin(t*angle)/den);let lon=Math.atan2(p[1],p[0])/rad;while(lon-prev>180)lon-=360;while(lon-prev< -180)lon+=360;prev=lon;return [lon,Math.atan2(p[2],Math.hypot(p[0],p[1]))/rad];});}
+let world=null,rounds=[],index=0,revealed=false,started=false,route=[],current=null;
+const canvas=$('map'),ctx=canvas.getContext('2d');let width=400,height=350,view={s:1,x:200,y:175};
+function project(lon,lat){return [view.x+lon*view.s,view.y-lat*view.s];}
+function resetView(){if(!route.length){view={s:width/360,x:width/2,y:height/2};}else{const xs=route.map(p=>p[0]),ys=route.map(p=>p[1]),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);const s=Math.max(width/440,Math.min(5,(width-105)/Math.max(35,maxX-minX),(height-125)/Math.max(25,maxY-minY)));view={s,x:width/2-(minX+maxX)/2*s,y:height/2+(minY+maxY)/2*s};}draw();}
+function draw(){ctx.clearRect(0,0,width,height);ctx.fillStyle='#0d1923';ctx.fillRect(0,0,width,height);ctx.lineWidth=.6;ctx.strokeStyle='#24313b';ctx.beginPath();for(let lat=-90;lat<=90;lat+=30){let [,y]=project(0,lat);ctx.moveTo(0,y);ctx.lineTo(width,y);}const left=(0-view.x)/view.s,right=(width-view.x)/view.s;for(let lon=Math.floor(left/30)*30;lon<=right;lon+=30){const [x,y]=project(lon,90);ctx.moveTo(x,y);ctx.lineTo(x,project(lon,-90)[1]);}ctx.stroke();
+if(world){const first=Math.floor((left+180)/360),last=Math.floor((right+180)/360);for(let copy=first;copy<=last;copy++){for(const f of world.features){const polygons=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;for(const polygon of polygons){ctx.beginPath();for(const ring of polygon){ring.forEach((p,i)=>{const [x,y]=project(p[0]+copy*360,p[1]);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.closePath();}ctx.fillStyle='#263944';ctx.fill('evenodd');ctx.strokeStyle='#51636a';ctx.lineWidth=.65;ctx.stroke();}}}}
+if(!route.length)return;
+ctx.save();ctx.beginPath();route.forEach((p,i)=>{const [x,y]=project(...p);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle=revealed?'#d0f66b':'#c6d7ad';ctx.lineWidth=revealed?2.6:1.8;ctx.setLineDash(revealed?[]:[5,6]);ctx.stroke();ctx.restore();
+const ends=[route[0],route[route.length-1]];ends.forEach((p,i)=>{const [x,y]=project(...p),color=i?'#83d9f2':'#d0f66b';ctx.beginPath();ctx.arc(x,y,19,0,Math.PI*2);ctx.fillStyle=i?'#83d9f218':'#d0f66b18';ctx.fill();ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.fillStyle='#10202a';ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle=color;ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText(i?'B':'A',x,y+4);
+if(revealed){const city=current[i];ctx.font='bold 12px Arial';const nameWidth=ctx.measureText(city[0]).width;ctx.font='10px Arial';const boxW=Math.max(nameWidth,ctx.measureText(city[1]).width)+16;const bx=Math.max(5,Math.min(width-boxW-5,x-boxW/2));let by=i?y+24:y-61;by=Math.max(48,Math.min(height-54,by));ctx.fillStyle='#0c1721f0';ctx.beginPath();if (typeof ctx.roundRect === 'function') ctx.roundRect(bx,by,boxW,36,5); else ctx.rect(bx,by,boxW,36);ctx.fill();ctx.fillStyle='#f3f6f8';ctx.font='bold 12px Arial';ctx.textAlign='left';ctx.fillText(city[0],bx+8,by+14);ctx.fillStyle='#acbdc8';ctx.font='10px Arial';ctx.fillText(city[1],bx+8,by+28);}});
+}
+new ResizeObserver(()=>{const box=canvas.getBoundingClientRect();width=box.width;height=box.height;const dpr=Math.min(devicePixelRatio||1,3);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);resetView();}).observe(canvas);
+function zoom(factor,x=width/2,y=height/2){const s=Math.min(35,Math.max(width/500,view.s*factor)),ratio=s/view.s;view.x=x+(view.x-x)*ratio;view.y=y+(view.y-y)*ratio;view.s=s;draw();}
+$('zoom-in').onclick=()=>zoom(1.4);$('zoom-out').onclick=()=>zoom(1/1.4);$('reset').onclick=resetView;
+canvas.addEventListener('wheel',e=>{e.preventDefault();const r=canvas.getBoundingClientRect();zoom(Math.exp(-e.deltaY*.002),e.clientX-r.left,e.clientY-r.top);},{passive:false});
+const pointers=new Map();const center=()=>{const p=[...pointers.values()];return [p.reduce((s,a)=>s+a[0],0)/p.length,p.reduce((s,a)=>s+a[1],0)/p.length];};const separation=()=>{const p=[...pointers.values()];return p.length<2?0:Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]);};
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);});canvas.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const old=center(),distance=separation();pointers.set(e.pointerId,[e.clientX,e.clientY]);const next=center();view.x+=next[0]-old[0];view.y+=next[1]-old[1];if(distance>0){const r=canvas.getBoundingClientRect();zoom(separation()/distance,next[0]-r.left,next[1]-r.top);}else draw();});for(const ev of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(ev,e=>pointers.delete(e.pointerId));
+canvas.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','=','-','0'].includes(e.key)){e.preventDefault();if(e.key==='0')resetView();else if(['+','=','-'].includes(e.key))zoom(e.key==='-'?1/1.4:1.4);else{view.x+=e.key==='ArrowLeft'?35:e.key==='ArrowRight'?-35:0;view.y+=e.key==='ArrowUp'?35:e.key==='ArrowDown'?-35:0;draw();}}});
+function updateEstimate(){const value=+$('estimate').value;$('estimate-value').textContent=fmt(value);$('estimate').style.background=`linear-gradient(to right,#d0f66b ${(value-100)/19900*100}%,#3a4955 ${(value-100)/19900*100}%)`;}
+$('estimate').addEventListener('input',updateEstimate);
+function setButton(label){$('action').replaceChildren(document.createTextNode(label+' '));const arrow=document.createElement('span');arrow.textContent='→';$('action').append(arrow);}
+function initRound(){canvas.setAttribute('aria-label','Map showing locations A and B. Drag to pan, pinch or scroll to zoom.');revealed=false;current=rounds[index].pair;route=greatCircle(...current);$('round').textContent=String(index+1).padStart(2,'0');$('estimate').disabled=false;$('estimate').value='10000';updateEstimate();$('round-score').textContent='';$('phase').textContent='FIND THE DISTANCE';$('feedback').innerHTML='<span class="route-symbol">A <span>··········</span> B</span><span>How far apart are these places?</span>';$('footnote').textContent='Trust your sense of scale.';setButton('LOCK IN GUESS');updateProgress();resetView();}
+function updateProgress(){document.querySelectorAll('.progress i').forEach((el,i)=>el.className=rounds[i]?.score!==undefined?'done':i===index?'current':'');}
+function start(){const shuffled=[...cities];for(let i=shuffled.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}rounds=Array.from({length:5},(_,i)=>{const pair=shuffled.slice(i*2,i*2+2);return {pair,actual:haversine(...pair)};});index=0;started=true;$('total').textContent='0';if($('intro').open)$('intro').close();if($('results').open)$('results').close();initRound();$('action').focus();}
+function lock(){if(revealed||!started||!world)return;revealed=true;const r=rounds[index];r.guess=+$('estimate').value;r.score=accuracy(r.guess,r.actual);$('estimate').disabled=true;$('round-score').textContent=r.score+'% ACCURACY';$('total').textContent=String(Math.round(rounds.slice(0,index+1).reduce((s,r)=>s+r.score,0)/(index+1)));$('feedback').textContent=`Actual distance: ${fmt(r.actual)} km`;$('phase').textContent='THE GREAT-CIRCLE ROUTE';$('footnote').textContent=`${fmt(Math.abs(r.guess-r.actual))} km ${r.guess>=r.actual?'over':'under'} the actual distance`;$('map-hint').textContent='DRAG TO EXPLORE · PINCH TO ZOOM';canvas.setAttribute('aria-label',`${current[0][0]}, ${current[0][1]} to ${current[1][0]}, ${current[1][1]}. Actual distance ${fmt(r.actual)} kilometers. Drag to pan, pinch or scroll to zoom.`);setButton(index===4?'SEE RESULTS':'NEXT ROUND');updateProgress();draw();}
+function results(){const mean=rounds.reduce((s,r)=>s+r.score,0)/5;$('final').textContent=String(Math.round(mean));$('verdict').textContent=mean>=85?'An exceptional sense of scale.':mean>=65?'You know your way around the planet.':mean>=40?'A little exploration goes a long way.':'The world is full of surprises. Try another expedition.';$('round-results').replaceChildren();rounds.forEach((r,i)=>{const row=document.createElement('div');row.className='result-row';const num=document.createElement('span');num.textContent=String(i+1).padStart(2,'0');const routeName=document.createElement('div');routeName.textContent=r.pair[0][0]+' → '+r.pair[1][0];const distance=document.createElement('small');distance.textContent=`${fmt(r.actual)} km · guessed ${fmt(r.guess)} km`;routeName.append(distance);const score=document.createElement('b');score.textContent=r.score+'%';row.append(num,routeName,score);$('round-results').append(row);});$('results').showModal();}
+$('action').onclick=()=>{if(!revealed)lock();else if(index<4){index++;initRound();canvas.setAttribute('aria-label','Map showing locations A and B. Drag to pan, pinch or scroll to zoom. Arrow keys pan; plus and minus zoom; zero resets.');}else results();};$('start').onclick=start;$('again').onclick=start;
+for(const id of ['intro','results'])$(id).addEventListener('cancel',e=>e.preventDefault());
+// Map data ships inside the HTML, so startup never needs fetch or a server.
+function loadWorld() {
+  const error = $('start-error');
+  error.hidden = true;
+  $('map-error').hidden = true;
+  $('start').disabled = true;
+  $('start').textContent = 'PREPARING MAP…';
+  world = null;
+  let stage = 'read the bundled map data';
+  try {
+    const embedded = $('world-data');
+    if (!embedded) throw new Error('The world-data element is missing. Use the complete HTML file.');
+    const data = JSON.parse(embedded.textContent);
+    if (data.type !== 'FeatureCollection' || !Array.isArray(data.features) || !data.features.length) {
+      throw new Error('The bundled map dataset is incomplete.');
+    }
+    world = data;
+    stage = 'draw the map';
+    if (!ctx) throw new Error('This browser did not provide a 2D canvas.');
+    resetView();
+    $('start').innerHTML = 'START GAME <span>→</span>';
+  } catch (e) {
+    world = null;
+    error.textContent = `Could not ${stage}: ${e.message}`;
+    error.hidden = false;
+    $('start').textContent = 'TRY AGAIN';
+    console.error('GeoScale Rush startup:', e);
+  } finally {
+    $('start').disabled = false;
+  }
+}
+$('start').onclick = () => { if (world) start(); else loadWorld(); };
+$('retry').onclick = loadWorld;
+$('intro').showModal();
+loadWorld();
